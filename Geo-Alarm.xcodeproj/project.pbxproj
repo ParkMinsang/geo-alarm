@@ -7,6 +7,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		C67101B62E3F451200FA60D1 /* MapViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = C67101B52E3F451200FA60D1 /* MapViewController.swift */; };
+		C67101B82E3F452B00FA60D1 /* MapViewControllerRepresentable.swift in Sources */ = {isa = PBXBuildFile; fileRef = C67101B72E3F452B00FA60D1 /* MapViewControllerRepresentable.swift */; };
 		C6B4E9082E3F37BD0000A9C7 /* Geo_AlarmApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = C6B4E9072E3F37BD0000A9C7 /* Geo_AlarmApp.swift */; };
 		C6B4E90A2E3F37BD0000A9C7 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C6B4E9092E3F37BD0000A9C7 /* ContentView.swift */; };
 		C6B4E90C2E3F37BE0000A9C7 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = C6B4E90B2E3F37BE0000A9C7 /* Assets.xcassets */; };
@@ -34,6 +36,8 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		C67101B52E3F451200FA60D1 /* MapViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MapViewController.swift; sourceTree = "<group>"; };
+		C67101B72E3F452B00FA60D1 /* MapViewControllerRepresentable.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MapViewControllerRepresentable.swift; sourceTree = "<group>"; };
 		C6B4E9042E3F37BD0000A9C7 /* Geo-Alarm.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Geo-Alarm.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		C6B4E9072E3F37BD0000A9C7 /* Geo_AlarmApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Geo_AlarmApp.swift; sourceTree = "<group>"; };
 		C6B4E9092E3F37BD0000A9C7 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
@@ -98,6 +102,8 @@
 				C6B4E9092E3F37BD0000A9C7 /* ContentView.swift */,
 				C6B4E90B2E3F37BE0000A9C7 /* Assets.xcassets */,
 				C6B4E90D2E3F37BE0000A9C7 /* Preview Content */,
+				C67101B52E3F451200FA60D1 /* MapViewController.swift */,
+				C67101B72E3F452B00FA60D1 /* MapViewControllerRepresentable.swift */,
 			);
 			path = "Geo-Alarm";
 			sourceTree = "<group>";
@@ -257,7 +263,9 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				C67101B82E3F452B00FA60D1 /* MapViewControllerRepresentable.swift in Sources */,
 				C6B4E90A2E3F37BD0000A9C7 /* ContentView.swift in Sources */,
+				C67101B62E3F451200FA60D1 /* MapViewController.swift in Sources */,
 				C6B4E9082E3F37BD0000A9C7 /* Geo_AlarmApp.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -425,6 +433,8 @@
 				DEVELOPMENT_TEAM = 543WM2D4VB;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSLocationAlwaysAndWhenInUseUsageDescription = "";
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -454,6 +464,8 @@
 				DEVELOPMENT_TEAM = 543WM2D4VB;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSLocationAlwaysAndWhenInUseUsageDescription = "";
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
