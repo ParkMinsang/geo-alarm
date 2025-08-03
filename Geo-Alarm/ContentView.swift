@@ -9,13 +9,8 @@ import SwiftUI
 
 struct ContentView: View {
     var body: some View {
-        VStack {
-            Image(systemName: "globe")
-                .imageScale(.large)
-                .foregroundStyle(.tint)
-            Text("Hello, world!")
-        }
-        .padding()
+        MapViewControllerRepresentable()
+                    .ignoresSafeArea() // 화면 전체를 사용하도록 안전 영역을 무시합니다.
     }
 }
 
