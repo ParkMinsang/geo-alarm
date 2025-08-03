@@ -14,11 +14,19 @@ class MapViewController: UIViewController, MKMapViewDelegate, CLLocationManagerD
         super.viewDidLoad()
         setupMapView()
         setupLocationManager()
-        setupGestureRecognizer()
         setupNotification()
+        setupTapGestureRecognizer()
+        
+        // "didAddRegion" 신호를 받을 수 있도록 Observer 등록
+        NotificationCenter.default.addObserver(self, selector: #selector(handleNewRegion(notification:)), name: .didAddRegion, object: nil)
     }
 
-    // MARK: - UI 및 초기 설정
+    deinit {
+        // 뷰 컨트롤러가 메모리에서 해제될 때 Observer를 반드시 제거해야 합니다.
+        NotificationCenter.default.removeObserver(self)
+    }
+
+    // MARK: - 초기 설정
 
     func setupMapView() {
         view.addSubview(mapView)
@@ -39,50 +47,78 @@ class MapViewController: UIViewController, MKMapViewDelegate, CLLocationManagerD
         locationManager.desiredAccuracy = kCLLocationAccuracyBest
         locationManager.startUpdatingLocation()
     }
-
-    func setupGestureRecognizer() {
-        let longPressGesture = UILongPressGestureRecognizer(target: self, action: #selector(handleLongPress(gesture:)))
-        longPressGesture.minimumPressDuration = 1.0
-        mapView.addGestureRecognizer(longPressGesture)
-    }
     
+    func setupTapGestureRecognizer() {
+        let tapGesture = UITapGestureRecognizer(target: self, action: #selector(handleTap(gesture:)))
+        mapView.addGestureRecognizer(tapGesture)
+    }
+
     func setupNotification() {
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, error in
             if let error = error {
-                print("D'oh: \(error.localizedDescription)")
+                print("Notification permission error: \(error.localizedDescription)")
             }
         }
     }
 
-    // MARK: - 지역 추가 및 모니터링
+    // MARK: - 지역 추가 및 삭제
 
-    @objc func handleLongPress(gesture: UILongPressGestureRecognizer) {
-        if gesture.state == .began {
-            let touchPoint = gesture.location(in: mapView)
-            let coordinate = mapView.convert(touchPoint, toCoordinateFrom: mapView)
-            
-            let alert = UIAlertController(title: "지역 추가", message: "이 위치에 알림을 추가하시겠습니까?", preferredStyle: .alert)
-            alert.addAction(UIAlertAction(title: "취소", style: .cancel))
-            alert.addAction(UIAlertAction(title: "추가", style: .default, handler: { _ in
-                self.addGeofence(at: coordinate)
-            }))
-            present(alert, animated: true)
+    @objc func handleNewRegion(notification: Notification) {
+        if let region = notification.userInfo?["region"] as? CLCircularRegion {
+            addGeofence(for: region)
         }
     }
-
-    func addGeofence(at coordinate: CLLocationCoordinate2D) {
-        let regionRadius: CLLocationDistance = 100 // 100미터 반경
-        let region = CLCircularRegion(center: coordinate, radius: regionRadius, identifier: UUID().uuidString)
+    
+    func addGeofence(for region: CLCircularRegion) {
         region.notifyOnEntry = true
         region.notifyOnExit = false
         
         locationManager.startMonitoring(for: region)
 
-        let circle = MKCircle(center: coordinate, radius: regionRadius)
+        let circle = MKCircle(center: region.center, radius: region.radius)
         mapView.addOverlay(circle)
     }
 
-    // MARK: - CLLocationManagerDelegate
+    @objc func handleTap(gesture: UITapGestureRecognizer) {
+        let touchPoint = gesture.location(in: mapView)
+        let coordinate = mapView.convert(touchPoint, toCoordinateFrom: mapView)
+        
+        // 탭한 위치에 있는 오버레이(원) 찾기
+        for overlay in mapView.overlays {
+            if let circleOverlay = overlay as? MKCircle {
+                let centerLocation = CLLocation(latitude: circleOverlay.coordinate.latitude, longitude: circleOverlay.coordinate.longitude)
+                let touchLocation = CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
+                
+                if centerLocation.distance(from: touchLocation) <= circleOverlay.radius {
+                    // 삭제 확인 팝업
+                    let alert = UIAlertController(title: "지역 삭제", message: "이 지역을 삭제하시겠습니까?", preferredStyle: .alert)
+                    alert.addAction(UIAlertAction(title: "취소", style: .cancel))
+                    alert.addAction(UIAlertAction(title: "삭제", style: .destructive, handler: { _ in
+                        self.removeGeofence(for: circleOverlay)
+                    }))
+                    present(alert, animated: true)
+                    return // 첫 번째로 찾은 원만 처리
+                }
+            }
+        }
+    }
+    
+    func removeGeofence(for overlay: MKCircle) {
+        // 모니터링 중인 지역에서 해당 지역 찾아서 중지
+        for region in locationManager.monitoredRegions {
+            if let circularRegion = region as? CLCircularRegion,
+               circularRegion.center.latitude == overlay.coordinate.latitude,
+               circularRegion.center.longitude == overlay.coordinate.longitude,
+               circularRegion.radius == overlay.radius {
+                locationManager.stopMonitoring(for: circularRegion)
+                break
+            }
+        }
+        // 지도에서 오버레이 삭제
+        mapView.removeOverlay(overlay)
+    }
+
+    // MARK: - CLLocationManagerDelegate (위치 서비스 관련)
 
     func locationManager(_ manager: CLLocationManager, didEnterRegion region: CLRegion) {
         if region is CLCircularRegion {
@@ -97,7 +133,6 @@ class MapViewController: UIViewController, MKMapViewDelegate, CLLocationManagerD
     func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
         print("Location Manager failed with the following error: \(error)")
     }
-
 
     // MARK: - 알람 및 알림 처리
 
@@ -120,13 +155,8 @@ class MapViewController: UIViewController, MKMapViewDelegate, CLLocationManagerD
         }
 
         let request = UNNotificationRequest(identifier: region.identifier, content: content, trigger: nil)
-        UNUserNotificationCenter.current().add(request) { error in
-            if let error = error {
-                print("Error adding notification: \(error.localizedDescription)")
-            }
-        }
-
-        // 앱이 활성화 상태일 때 직접 알람 재생
+        UNUserNotificationCenter.current().add(request)
+        
         if UIApplication.shared.applicationState == .active {
             playAlarm()
         }
@@ -147,8 +177,9 @@ class MapViewController: UIViewController, MKMapViewDelegate, CLLocationManagerD
     }
 
     func playSound() {
+        // 알람 소리로 사용할 mp3 파일을 프로젝트에 추가해야 합니다. (예: alarm.mp3)
         guard let url = Bundle.main.url(forResource: "alarm", withExtension: "mp3") else {
-            // "alarm.mp3" 파일이 프로젝트에 없으면 기본 시스템 사운드 재생
+            // 파일이 없으면 기본 시스템 사운드 재생
             AudioServicesPlaySystemSound(1315)
             return
         }
@@ -180,8 +211,7 @@ class MapViewController: UIViewController, MKMapViewDelegate, CLLocationManagerD
     }
     
     func checkSilentMode(completion: @escaping (Bool) -> Void) {
-        // 무음 모드 감지는 직접적인 API가 없어, 짧은 소리를 재생하는데 걸리는 시간으로 우회하여 확인합니다.
-        let soundID: SystemSoundID = 1157 // 짧고 조용한 소리
+        let soundID: SystemSoundID = 1157
         var playingTime: TimeInterval = 0
         
         let completionBlock: AudioServicesSystemSoundCompletionProc = { _,_ in }
@@ -190,19 +220,18 @@ class MapViewController: UIViewController, MKMapViewDelegate, CLLocationManagerD
         let startTime = Date()
         AudioServicesPlaySystemSoundWithCompletion(soundID) {
             playingTime = Date().timeIntervalSince(startTime)
-            // 0.1초 미만으로 재생이 끝나면 무음 모드로 간주
             completion(playingTime < 0.1)
         }
     }
 
-    // MARK: - MKMapViewDelegate
+    // MARK: - MKMapViewDelegate (지도 UI 관련)
 
     func mapView(_ mapView: MKMapView, rendererFor overlay: MKOverlay) -> MKOverlayRenderer {
         if let circleOverlay = overlay as? MKCircle {
             let circleRenderer = MKCircleRenderer(overlay: circleOverlay)
-            circleRenderer.fillColor = UIColor.blue.withAlphaComponent(0.2)
-            circleRenderer.strokeColor = .blue
-            circleRenderer.lineWidth = 1
+            circleRenderer.fillColor = UIColor.systemBlue.withAlphaComponent(0.2)
+            circleRenderer.strokeColor = .systemBlue
+            circleRenderer.lineWidth = 1.5
             return circleRenderer
         }
         return MKOverlayRenderer()
