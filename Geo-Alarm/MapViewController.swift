@@ -13,7 +13,6 @@ class MapViewController: UIViewController, MKMapViewDelegate, CLLocationManagerD
 
     private var isAlarmingForRegionIdentifier: String?
     private var hapticEngine: CHHapticEngine?
-    // ✅ [수정됨] 플레이어 타입을 고급 플레이어로 변경
     private var hapticPlayer: CHHapticAdvancedPatternPlayer?
 
     override func viewDidLoad() {
@@ -223,16 +222,29 @@ class MapViewController: UIViewController, MKMapViewDelegate, CLLocationManagerD
         guard let engine = hapticEngine else { return }
 
         do {
+            var events = [CHHapticEvent]()
+            
+            // 1. 0초에 시작해서 0.8초 동안 강한 진동 이벤트
             let intensity = CHHapticEventParameter(parameterID: .hapticIntensity, value: 1.0)
             let sharpness = CHHapticEventParameter(parameterID: .hapticSharpness, value: 0.8)
-            let continuousEvent = CHHapticEvent(eventType: .hapticContinuous, parameters: [intensity, sharpness], relativeTime: 0, duration: 1.0)
+            let vibrateEvent = CHHapticEvent(eventType: .hapticContinuous, parameters: [intensity, sharpness], relativeTime: 0, duration: 0.8)
+            events.append(vibrateEvent)
             
-            let pattern = try CHHapticPattern(events: [continuousEvent], parameters: [])
+            // ✅ [추가됨] 2. 1.5초에 시작하는 '정지' 이벤트 (0.7초간의 공백 생성)
+            // 강도가 0인 이벤트를 추가하여 명시적인 휴지기를 만듭니다.
+            let pauseIntensity = CHHapticEventParameter(parameterID: .hapticIntensity, value: 0)
+            let pauseEvent = CHHapticEvent(eventType: .hapticTransient, parameters: [pauseIntensity], relativeTime: 1.5)
+            events.append(pauseEvent)
+
+            // 3. 패턴 생성
+            // 이제 패턴의 총 길이는 1.5초가 됩니다.
+            let pattern = try CHHapticPattern(events: events, parameters: [])
             
-            // ✅ [수정됨] 고급 플레이어 생성
+            // 4. 패턴을 재생할 고급 플레이어 생성
             hapticPlayer = try engine.makeAdvancedPlayer(with: pattern)
+            hapticPlayer?.loopEnabled = true // 이 1.5초짜리 패턴을 무한 반복
             
-            hapticPlayer?.loopEnabled = true
+            // 5. 재생 시작
             try hapticPlayer?.start(atTime: 0)
             
         } catch {
