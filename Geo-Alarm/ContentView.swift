@@ -27,20 +27,37 @@ struct AddLocationView: UIViewControllerRepresentable {
 }
 
 
+// ContentView.swift
+
 struct ContentView: View {
     @State private var isAddingLocation = false
 
     var body: some View {
         ZStack {
-            // 지도 뷰 (배경)
             MapViewControllerRepresentable()
-                .ignoresSafeArea() // 안전 영역까지 지도를 꽉 채움
+                .ignoresSafeArea()
 
-            // + 버튼 (오버레이)
+            // 버튼들을 담을 컨테이너
             VStack {
-                Spacer() // 버튼을 아래로 밀어냄
+                Spacer()
                 HStack {
-                    Spacer() // 버튼을 오른쪽으로 밀어냄
+                    Spacer()
+                    
+                    // ✅ [추가됨] 테스트 버튼
+                    Button(action: {
+                        // "testAlarm" 신호 보내기
+                        NotificationCenter.default.post(name: .didTapTestAlarm, object: nil)
+                    }) {
+                        Image(systemName: "bell.fill")
+                            .font(.system(size: 22, weight: .bold))
+                            .foregroundColor(.white)
+                            .padding()
+                            .background(Color.green) // 테스트 버튼은 초록색으로
+                            .clipShape(Circle())
+                            .shadow(radius: 5)
+                    }
+
+                    // 기존 + 버튼
                     Button(action: {
                         isAddingLocation = true
                     }) {
@@ -52,7 +69,7 @@ struct ContentView: View {
                             .clipShape(Circle())
                             .shadow(radius: 5)
                     }
-                    .padding()
+                    .padding([.trailing, .bottom]) // 오른쪽, 아래 여백
                 }
             }
         }
@@ -62,7 +79,8 @@ struct ContentView: View {
     }
 }
 
-// Notification 이름을 확장하여 오타 방지
+// Notification 이름 추가
 extension Notification.Name {
     static let didAddRegion = Notification.Name("didAddRegion")
+    static let didTapTestAlarm = Notification.Name("didTapTestAlarm") // ✅ 테스트용 이름 추가
 }

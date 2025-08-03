@@ -3,6 +3,7 @@ import MapKit
 import CoreLocation
 import AVFoundation
 import UserNotifications
+import CoreHaptics
 
 class MapViewController: UIViewController, MKMapViewDelegate, CLLocationManagerDelegate {
 
@@ -10,23 +11,41 @@ class MapViewController: UIViewController, MKMapViewDelegate, CLLocationManagerD
     let locationManager = CLLocationManager()
     var audioPlayer: AVAudioPlayer?
 
+    private var isAlarmingForRegionIdentifier: String?
+    private var hapticEngine: CHHapticEngine?
+    // ✅ [수정됨] 플레이어 타입을 고급 플레이어로 변경
+    private var hapticPlayer: CHHapticAdvancedPatternPlayer?
+
     override func viewDidLoad() {
         super.viewDidLoad()
         setupMapView()
         setupLocationManager()
         setupNotification()
         setupTapGestureRecognizer()
-        
-        // "didAddRegion" 신호를 받을 수 있도록 Observer 등록
+        setupHaptics()
+
         NotificationCenter.default.addObserver(self, selector: #selector(handleNewRegion(notification:)), name: .didAddRegion, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(handleTestAlarm), name: .didTapTestAlarm, object: nil)
     }
 
     deinit {
-        // 뷰 컨트롤러가 메모리에서 해제될 때 Observer를 반드시 제거해야 합니다.
         NotificationCenter.default.removeObserver(self)
     }
 
     // MARK: - 초기 설정
+    
+    func setupHaptics() {
+        guard CHHapticEngine.capabilitiesForHardware().supportsHaptics else {
+            print("이 기기는 CoreHaptics를 지원하지 않습니다.")
+            return
+        }
+        do {
+            hapticEngine = try CHHapticEngine()
+            try hapticEngine?.start()
+        } catch {
+            print("햅틱 엔진 시작 실패: \(error)")
+        }
+    }
 
     func setupMapView() {
         view.addSubview(mapView)
@@ -61,20 +80,30 @@ class MapViewController: UIViewController, MKMapViewDelegate, CLLocationManagerD
         }
     }
 
-    // MARK: - 지역 추가 및 삭제
+    // MARK: - 지역 추가, 삭제, 테스트
 
     @objc func handleNewRegion(notification: Notification) {
         if let region = notification.userInfo?["region"] as? CLCircularRegion {
             addGeofence(for: region)
+
+            if let currentLocation = locationManager.location, region.contains(currentLocation.coordinate) {
+                if isAlarmingForRegionIdentifier == nil {
+                    handleArrival(region: region)
+                }
+            }
         }
+    }
+
+    @objc func handleTestAlarm() {
+        guard isAlarmingForRegionIdentifier == nil else { return }
+        let fakeRegion = CLRegion()
+        handleArrival(region: fakeRegion)
     }
     
     func addGeofence(for region: CLCircularRegion) {
         region.notifyOnEntry = true
         region.notifyOnExit = false
-        
         locationManager.startMonitoring(for: region)
-
         let circle = MKCircle(center: region.center, radius: region.radius)
         mapView.addOverlay(circle)
     }
@@ -83,28 +112,25 @@ class MapViewController: UIViewController, MKMapViewDelegate, CLLocationManagerD
         let touchPoint = gesture.location(in: mapView)
         let coordinate = mapView.convert(touchPoint, toCoordinateFrom: mapView)
         
-        // 탭한 위치에 있는 오버레이(원) 찾기
         for overlay in mapView.overlays {
             if let circleOverlay = overlay as? MKCircle {
                 let centerLocation = CLLocation(latitude: circleOverlay.coordinate.latitude, longitude: circleOverlay.coordinate.longitude)
                 let touchLocation = CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
                 
                 if centerLocation.distance(from: touchLocation) <= circleOverlay.radius {
-                    // 삭제 확인 팝업
                     let alert = UIAlertController(title: "지역 삭제", message: "이 지역을 삭제하시겠습니까?", preferredStyle: .alert)
                     alert.addAction(UIAlertAction(title: "취소", style: .cancel))
                     alert.addAction(UIAlertAction(title: "삭제", style: .destructive, handler: { _ in
                         self.removeGeofence(for: circleOverlay)
                     }))
                     present(alert, animated: true)
-                    return // 첫 번째로 찾은 원만 처리
+                    return
                 }
             }
         }
     }
     
     func removeGeofence(for overlay: MKCircle) {
-        // 모니터링 중인 지역에서 해당 지역 찾아서 중지
         for region in locationManager.monitoredRegions {
             if let circularRegion = region as? CLCircularRegion,
                circularRegion.center.latitude == overlay.coordinate.latitude,
@@ -114,72 +140,71 @@ class MapViewController: UIViewController, MKMapViewDelegate, CLLocationManagerD
                 break
             }
         }
-        // 지도에서 오버레이 삭제
         mapView.removeOverlay(overlay)
     }
 
-    // MARK: - CLLocationManagerDelegate (위치 서비스 관련)
+    // MARK: - CLLocationManagerDelegate
 
     func locationManager(_ manager: CLLocationManager, didEnterRegion region: CLRegion) {
-        if region is CLCircularRegion {
+        if isAlarmingForRegionIdentifier == nil {
             handleArrival(region: region)
         }
     }
     
     func locationManager(_ manager: CLLocationManager, monitoringDidFailFor region: CLRegion?, withError error: Error) {
-        print("Monitoring failed for region with identifier: \(region?.identifier ?? "unknown") - \(error.localizedDescription)")
+        print("Monitoring failed for region: \(region?.identifier ?? "unknown") - \(error.localizedDescription)")
     }
 
     func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
-        print("Location Manager failed with the following error: \(error)")
+        print("Location Manager failed with error: \(error)")
     }
 
     // MARK: - 알람 및 알림 처리
 
     func handleArrival(region: CLRegion) {
-        let content = UNMutableNotificationContent()
-        content.title = "목적지 도착!"
-        content.body = "설정한 지역에 도착했습니다."
-        
-        // 알람 소리 및 진동 제어
-        if isHeadphoneConnected() {
-            content.sound = .default
-        } else {
-            checkSilentMode { isSilent in
-                if isSilent {
-                    // 무음 모드일 경우 진동만 (기본 알림에 진동 포함)
-                } else {
-                    content.sound = .default
-                }
-            }
-        }
+        isAlarmingForRegionIdentifier = region.identifier
 
-        let request = UNNotificationRequest(identifier: region.identifier, content: content, trigger: nil)
+        let content = UNMutableNotificationContent()
+        content.title = "목적지 도착! 📍"
+        content.body = "설정한 지역에 도착했습니다."
+        content.sound = .default
+        
+        let request = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
         UNUserNotificationCenter.current().add(request)
         
         if UIApplication.shared.applicationState == .active {
-            playAlarm()
-        }
-    }
-    
-    func playAlarm() {
-        if isHeadphoneConnected() {
-            playSound()
-        } else {
-            checkSilentMode { isSilent in
-                if isSilent {
-                    self.vibrate()
-                } else {
-                    self.playSound()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                guard self.isAlarmingForRegionIdentifier == region.identifier else { return }
+                
+                self.playContinuousAlarm()
+
+                let alert = UIAlertController(title: "목적지 도착! 📍", message: "설정한 지역에 도착했습니다.", preferredStyle: .alert)
+                let stopAction = UIAlertAction(title: "알람 끄기", style: .default) { _ in
+                    self.stopAlarm()
                 }
+                alert.addAction(stopAction)
+                self.present(alert, animated: true)
             }
         }
     }
+    
+    func stopAlarm() {
+        audioPlayer?.stop()
+        try? hapticPlayer?.stop(atTime: 0)
+        isAlarmingForRegionIdentifier = nil
+        
+        if self.presentedViewController is UIAlertController {
+            self.dismiss(animated: true)
+        }
+    }
+
+    func playContinuousAlarm() {
+        playSound()
+        playContinuousVibration()
+    }
 
     func playSound() {
-        // 알람 소리로 사용할 mp3 파일을 프로젝트에 추가해야 합니다. (예: alarm.mp3)
         guard let url = Bundle.main.url(forResource: "alarm", withExtension: "mp3") else {
-            // 파일이 없으면 기본 시스템 사운드 재생
             AudioServicesPlaySystemSound(1315)
             return
         }
@@ -187,44 +212,35 @@ class MapViewController: UIViewController, MKMapViewDelegate, CLLocationManagerD
             try AVAudioSession.sharedInstance().setCategory(.playback, mode: .default)
             try AVAudioSession.sharedInstance().setActive(true)
             audioPlayer = try AVAudioPlayer(contentsOf: url, fileTypeHint: AVFileType.mp3.rawValue)
+            audioPlayer?.numberOfLoops = -1
             audioPlayer?.play()
         } catch let error {
-            print(error.localizedDescription)
+            print("소리 재생 실패: \(error.localizedDescription)")
         }
     }
 
-    func vibrate() {
-        let generator = UINotificationFeedbackGenerator()
-        generator.notificationOccurred(.success)
-    }
+    func playContinuousVibration() {
+        guard let engine = hapticEngine else { return }
 
-    // MARK: - 오디오 및 무음 모드 확인
-
-    func isHeadphoneConnected() -> Bool {
-        let route = AVAudioSession.sharedInstance().currentRoute
-        for description in route.outputs {
-            if description.portType == .headphones || description.portType == .bluetoothA2DP {
-                return true
-            }
-        }
-        return false
-    }
-    
-    func checkSilentMode(completion: @escaping (Bool) -> Void) {
-        let soundID: SystemSoundID = 1157
-        var playingTime: TimeInterval = 0
-        
-        let completionBlock: AudioServicesSystemSoundCompletionProc = { _,_ in }
-        AudioServicesAddSystemSoundCompletion(soundID, nil, nil, completionBlock, nil)
-        
-        let startTime = Date()
-        AudioServicesPlaySystemSoundWithCompletion(soundID) {
-            playingTime = Date().timeIntervalSince(startTime)
-            completion(playingTime < 0.1)
+        do {
+            let intensity = CHHapticEventParameter(parameterID: .hapticIntensity, value: 1.0)
+            let sharpness = CHHapticEventParameter(parameterID: .hapticSharpness, value: 0.8)
+            let continuousEvent = CHHapticEvent(eventType: .hapticContinuous, parameters: [intensity, sharpness], relativeTime: 0, duration: 1.0)
+            
+            let pattern = try CHHapticPattern(events: [continuousEvent], parameters: [])
+            
+            // ✅ [수정됨] 고급 플레이어 생성
+            hapticPlayer = try engine.makeAdvancedPlayer(with: pattern)
+            
+            hapticPlayer?.loopEnabled = true
+            try hapticPlayer?.start(atTime: 0)
+            
+        } catch {
+            print("햅틱 재생 실패: \(error.localizedDescription)")
         }
     }
 
-    // MARK: - MKMapViewDelegate (지도 UI 관련)
+    // MARK: - MKMapViewDelegate
 
     func mapView(_ mapView: MKMapView, rendererFor overlay: MKOverlay) -> MKOverlayRenderer {
         if let circleOverlay = overlay as? MKCircle {
